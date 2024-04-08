@@ -24,21 +24,20 @@ fn main() -> Result<()> {
         match stream {
             Ok(mut stream) => {
                 println!("got new stream");
+                let mut reader = BufReader::new(&stream);
+
                 let mut buf = [0; 512];
-                stream.read(&mut buf).unwrap();
-                stream.write(b"+PONG\r\n").unwrap();
-                // let mut reader = BufReader::new(&stream);
-                // let mut data = String::new();
-                // reader.read_to_string(&mut data).with_context(
-                //     || "failed reading to string"
-                // )?;
-                // println!("got {data}");
-                // let commands: Vec<Command> = parse_commands(&data);
-                // for command in commands {
-                //     match command {
-                //         PING => { stream.write_all(b"+PONG\r\n")?; }
-                //     }
-                // }
+                let n = reader.read(&mut buf).unwrap();
+                println!("got {n} bytes {buf:?}");
+                let data = String::from_utf8(buf.to_vec())?;
+
+                println!("got {data:?}");
+                let commands: Vec<Command> = parse_commands(&data.trim_end_matches('\0'));
+                for command in commands {
+                    match command {
+                        PING => { stream.write_all(b"+PONG\r\n")?; }
+                    }
+                }
                 // stream.write_all(b"+");
             }
             Err(e) => {
@@ -52,7 +51,7 @@ fn main() -> Result<()> {
 fn parse_commands(data: &str) -> Vec<Command> {
     tokenize(&data).iter()
         .filter_map(
-            |t| parse_command(t)
+            |t| parse_command(&t)
         )
         .collect()
 }
@@ -62,6 +61,7 @@ fn tokenize(input: &str) -> Vec<Vec<&str>> {
     let mut lines = input.lines();
     let mut result = vec![];
     while let Some(value) = lines.next() {
+        println!("array length {value:?}");
         if value.is_empty() {
             break;
         }
@@ -69,7 +69,7 @@ fn tokenize(input: &str) -> Vec<Vec<&str>> {
         let mut command = vec![];
         for _ in 0..length {
             let x = lines.next().unwrap();
-            println!("tokenizing {x}");
+            println!("str length {x}");
 
             let val = lines.next().unwrap();
             println!("tokenizing {val}");
@@ -82,7 +82,7 @@ fn tokenize(input: &str) -> Vec<Vec<&str>> {
 
 fn parse_command(input: &Vec<&str>) -> Option<Command> {
     match input.as_slice() {
-        ["PING"] => { Some(PING) }
+        ["ping"] | ["PING"] => { Some(PING) }
         _ => None,
     }
 }
