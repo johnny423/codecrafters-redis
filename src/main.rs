@@ -1,4 +1,7 @@
+use std::collections::HashMap;
 use std::fmt::format;
+use std::ptr::write;
+use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -7,24 +10,27 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub enum Command {
     PING,
     Echo(String),
-    // Set { key: String, value: String },
-    // Get { key: String },
+    Set { key: String, value: String },
+    Get { key: String },
 }
+
+type DB = Arc<Mutex<HashMap<String, String>>>;
 
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
-
+    let db: DB = Arc::new(Mutex::new(HashMap::<String, String>::new()));
     println!("Server listening on port 6379");
 
     while let Ok((stream, _)) = listener.accept().await {
+        let db = db.clone();
         tokio::spawn(async move {
-            handle_client(stream).await;
+            handle_client(stream, db).await;
         });
     }
 }
 
-async fn handle_client(mut stream: TcpStream) {
+async fn handle_client(mut stream: TcpStream, db: DB) {
     println!("Client connected: {}", stream.peer_addr().unwrap());
 
     let (mut reader, mut writer) = stream.split();
@@ -45,7 +51,22 @@ async fn handle_client(mut stream: TcpStream) {
                             writer.write_all(b"+PONG\r\n").await.unwrap();
                         }
                         Command::Echo(value) => {
-                            writer.write_all(format!("${}\r\n{value}\r\n", value.len()).as_ref()).await.unwrap();
+                            writer.write_all(as_redis_string(&value).as_ref()).await.unwrap();
+                        }
+                        Command::Get { key } => {
+                            let response = match db.lock().unwrap().get(&key) {
+                                None => {
+                                    "$-1\r\n".to_string()
+                                }
+                                Some(value) => {
+                                    as_redis_string(value)
+                                }
+                            };
+                            writer.write_all(response.as_ref()).await.unwrap();
+                        }
+                        Command::Set { key, value } => {
+                            db.lock().unwrap().insert(key, value);
+                            writer.write_all(b"+OK\r\n").await.unwrap();
                         }
                     }
                 }
@@ -56,6 +77,10 @@ async fn handle_client(mut stream: TcpStream) {
             }
         }
     }
+}
+
+fn as_redis_string(value: &str) -> String {
+    format!("${}\r\n{value}\r\n", value.len())
 }
 
 fn parse_commands(data: &str) -> Vec<Command> {
@@ -93,8 +118,20 @@ fn tokenize(input: &str) -> Vec<Vec<&str>> {
 fn parse_command(input: &Vec<&str>) -> Option<Command> {
     match input.as_slice() {
         ["ping"] | ["PING"] => { Some(Command::PING) }
-        ["echo", rest @ ..] | ["ECHO", rest @ ..] => {
+        ["echo", rest @ ..] |
+        ["ECHO", rest @ ..] => {
             Some(Command::Echo(rest.join(" ")))
+        }
+        ["set", key, value] |
+        ["SET", key, value] => {
+            Some(Command::Set {
+                key: key.to_string(),
+                value: value.to_string(),
+            })
+        }
+        ["get", key] |
+        ["GET", key] => {
+            Some(Command::Get { key: key.to_string() })
         }
         _ => None,
     }
