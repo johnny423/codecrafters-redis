@@ -1,3 +1,4 @@
+use std::fmt::format;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -5,6 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
 pub enum Command {
     PING,
+    Echo(String),
     // Set { key: String, value: String },
     // Get { key: String },
 }
@@ -41,6 +43,9 @@ async fn handle_client(mut stream: TcpStream) {
                     match command {
                         Command::PING => {
                             writer.write_all(b"+PONG\r\n").await.unwrap();
+                        }
+                        Command::Echo(value) => {
+                            writer.write_all(format!("${}\r\n{value}\r\n", value.len()).as_ref()).await.unwrap();
                         }
                     }
                 }
@@ -88,6 +93,9 @@ fn tokenize(input: &str) -> Vec<Vec<&str>> {
 fn parse_command(input: &Vec<&str>) -> Option<Command> {
     match input.as_slice() {
         ["ping"] | ["PING"] => { Some(Command::PING) }
+        ["echo", rest @ ..] | ["ECHO", rest @ ..] => {
+            Some(Command::Echo(rest.join(" ")))
+        }
         _ => None,
     }
 }
