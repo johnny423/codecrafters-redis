@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::net::{TcpListener};
 use anyhow::{Context, Result};
 use crate::Command::PING;
@@ -23,15 +23,23 @@ fn main() -> Result<()> {
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
-                let mut reader = BufReader::new(&stream);
-                let mut data = String::new();
-                reader.read_to_string(&mut data).unwrap();
-                let commands: Vec<Command> = parse_commands(&data);
-                for command in commands {
-                    match command {
-                        PING => { stream.write_all(b"+PONG\r\n")?; }
-                    }
-                }
+                println!("got new stream");
+                let mut buf = [0; 512];
+                stream.read(&mut buf).unwrap();
+                stream.write(b"+PONG\r\n").unwrap();
+                // let mut reader = BufReader::new(&stream);
+                // let mut data = String::new();
+                // reader.read_to_string(&mut data).with_context(
+                //     || "failed reading to string"
+                // )?;
+                // println!("got {data}");
+                // let commands: Vec<Command> = parse_commands(&data);
+                // for command in commands {
+                //     match command {
+                //         PING => { stream.write_all(b"+PONG\r\n")?; }
+                //     }
+                // }
+                // stream.write_all(b"+");
             }
             Err(e) => {
                 println!("error: {}", e);
