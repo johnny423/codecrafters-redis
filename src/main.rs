@@ -23,22 +23,26 @@ fn main() -> Result<()> {
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
-                println!("got new stream");
-                let mut reader = BufReader::new(&stream);
+                loop {
+                    println!("got new stream");
+                    let mut reader = BufReader::new(&stream);
 
-                let mut buf = [0; 512];
-                let n = reader.read(&mut buf).unwrap();
-                println!("got {n} bytes {buf:?}");
-                let data = String::from_utf8(buf.to_vec())?;
+                    let mut buf = [0; 512];
+                    let n = reader.read(&mut buf).unwrap();
+                    if n == 0 {
+                        break;
+                    }
+                    println!("got {n} bytes {buf:?}");
+                    let data = String::from_utf8(buf.to_vec())?;
 
-                println!("got {data:?}");
-                let commands: Vec<Command> = parse_commands(&data.trim_end_matches('\0'));
-                for command in commands {
-                    match command {
-                        PING => { stream.write_all(b"+PONG\r\n")?; }
+                    println!("got {data:?}");
+                    let commands: Vec<Command> = parse_commands(&data.trim_end_matches('\0'));
+                    for command in commands {
+                        match command {
+                            PING => { stream.write_all(b"+PONG\r\n")?; }
+                        }
                     }
                 }
-                // stream.write_all(b"+");
             }
             Err(e) => {
                 println!("error: {}", e);
