@@ -9,6 +9,7 @@ use crate::command::{Command, parse_command};
 use crate::parse::{bulk_string, pairs};
 use std::{fmt::Write};
 use bytes::Bytes;
+use clap::error::ContextValue::String;
 
 mod db;
 mod command;
@@ -155,7 +156,7 @@ async fn start_server(server: Server) {
 }
 
 
-const EMPTY:  &[u8] = b"524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
+const EMPTY: &[u8] = b"524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
 
 async fn handle_client(mut stream: TcpStream, db: DB, server: Arc<Server>) -> Result<()> {
     let peer_addr = stream.peer_addr().context(
@@ -216,9 +217,13 @@ async fn handle_client(mut stream: TcpStream, db: DB, server: Arc<Server>) -> Re
                         let empty = hex::decode(EMPTY)
                             .unwrap();
 
-                        let val = format!("${}\r\n{:?}", empty.len(), empty);
-                        println!("sending {val}");
-                        writer.write_all(val.as_ref()).await?;
+                        // let empty_rdb_hex = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
+                        // let empty_rdb_bytes = hex::decode(empty_rdb_hex)?;
+                        // let message = format!("${}\r\n", empty_rdb_bytes.len());
+
+                        let mut val = format!("${}\r\n", empty.len());
+                        writer.write(val.as_ref()).await?;
+                        writer.write_all(&empty).await?;
                     }
                     Command::Err => {
                         writer.write_all(b"-ERR\r\n").await?;
