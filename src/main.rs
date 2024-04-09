@@ -104,10 +104,27 @@ async fn start_server(server: Server) {
         let master_addr = format!("{host}:{port}");
         println!("Connecting to master at {master_addr}... ");
         let mut stream = TcpStream::connect(master_addr.clone()).await.unwrap();
+
+        println!("Connected to master! starting handshake... ");
         stream.write_all(
             parse::array(&vec!["ping"]).as_bytes()
         ).await.unwrap();
-        println!("Connected to master");
+
+        let mut buf = [0; 1024];
+        stream.read(&mut buf).await.unwrap();
+        // todo check pong
+
+        stream.write_all(
+            parse::array(&vec!["REPLCONF", "listening-port", &server.port]).as_bytes()
+        ).await.unwrap();
+        stream.read(&mut buf).await.unwrap();
+        // todo check ok
+
+        stream.write_all(
+            parse::array(&vec!["REPLCONF", "capa", "psync2"]).as_bytes()
+        ).await.unwrap();
+        stream.read(&mut buf).await.unwrap();
+        // todo check ok
     }
 
     let server = Arc::new(server);
