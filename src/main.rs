@@ -4,12 +4,12 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use anyhow::{Context, Result};
 use db::{DB, Entry};
+use clap::{Arg, Command};
 
 mod db;
 mod command;
 mod parse;
 
-use clap::{Arg, Args, Command, Parser};
 
 #[derive(Debug)]
 enum Role {
@@ -24,7 +24,6 @@ enum Role {
 struct Server {
     port: String,
     role: Role,
-    // db: DB,
 }
 
 impl Server {
@@ -32,27 +31,9 @@ impl Server {
         Self {
             port,
             role,
-            // db: Arc::new(Mutex::new(HashMap::<String, Entry>::new())),
         }
     }
 }
-//
-//
-// #[derive(Parser)]
-// struct Cli {
-//     #[arg(short, long, default_value = "6379")]
-//     port: String,
-//
-//     #[arg(short, long, default_value = None)]
-//     replica_of: Option<ReplicaOf>,
-// }
-//
-//
-// #[derive(Args, Clone)]
-// struct ReplicaOf {
-//     host: String,
-//     port: String,
-// }
 
 #[tokio::main]
 async fn main() {

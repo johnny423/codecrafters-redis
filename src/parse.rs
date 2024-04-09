@@ -1,5 +1,3 @@
-use clap::builder::Str;
-
 pub fn tokenize(input: &str) -> Vec<Vec<&str>> {
     let mut lines = input.lines();
     let mut result = vec![];
@@ -35,7 +33,7 @@ pub fn tokenize(input: &str) -> Vec<Vec<&str>> {
 }
 
 pub fn bulk_string(string: Option<String>) -> String {
-    match string{
+    match string {
         None => "$-1\r\n".to_string(),
         Some(value) => {
             format!("${}\r\n{value}\r\n", value.len())
