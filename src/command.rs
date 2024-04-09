@@ -1,6 +1,7 @@
 use std::time::Duration;
-use crate::db;
+use crate::{db, parse};
 use crate::db::DB;
+use crate::parse::bulk_string;
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
 pub enum Command {
@@ -8,11 +9,8 @@ pub enum Command {
     Echo(String),
     Set { key: String, value: String, ex: Option<Duration> },
     Get { key: String },
+    Info,
     Err,
-}
-
-fn as_redis_string(value: &str) -> String {
-    format!("${}\r\n{value}\r\n", value.len())
 }
 
 
@@ -50,6 +48,10 @@ impl Command {
             ["GET", key] => {
                 Command::Get { key: key.to_string() }
             }
+            ["info", _rest @ ..] |
+            ["INFO", _rest @ ..] => {
+                Command::Info
+            }
             _ => Command::Err,
         }
     }
@@ -60,21 +62,25 @@ impl Command {
                 "+PONG\r\n".to_owned()
             }
             Command::Echo(value) => {
-                as_redis_string(&value)
+                bulk_string(Some(value))
             }
             Command::Get { key } => {
-                match db::get(db, &key) {
-                    None => "$-1\r\n".to_owned(),
-                    Some(value) => {
-                        as_redis_string(&value)
-                    }
-                }
+                bulk_string(db::get(db, &key))
             }
             Command::Set { key, value, ex } => {
                 db::set(db, key, value, ex);
                 "+OK\r\n".to_owned()
             }
+            Command::Info => {
+                bulk_string(Some("role:master".to_string()))
+            }
             Command::Err => "-ERR\r\n".to_owned(),
         }
     }
+}
+
+
+pub fn parse_commands(data: &str) -> anyhow::Result<Vec<Command>> {
+    let tokenz = parse::tokenize(data);
+    Ok(tokenz.iter().map(Command::parse).collect())
 }

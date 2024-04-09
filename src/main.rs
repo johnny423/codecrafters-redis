@@ -65,7 +65,7 @@ async fn handle_client(mut stream: TcpStream, db: DB) -> Result<()> {
                 let data = data.trim_end_matches('\0');
 
                 // parse requests into commands
-                match parse::parse_commands(data) {
+                match command::parse_commands(data) {
                     Ok(commands) => {
                         for command in commands {
                             println!("DEBUG: got command: {command:?}");

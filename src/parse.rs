@@ -1,11 +1,4 @@
-use crate::command::Command;
-
-
-pub fn parse_commands(data: &str) -> anyhow::Result<Vec<Command>> {
-    let tokenz = tokenize(data);
-    Ok(tokenz.iter().map(Command::parse).collect())
-}
-
+use clap::builder::Str;
 
 pub fn tokenize(input: &str) -> Vec<Vec<&str>> {
     let mut lines = input.lines();
@@ -41,10 +34,20 @@ pub fn tokenize(input: &str) -> Vec<Vec<&str>> {
     result
 }
 
+pub fn bulk_string(string: Option<String>) -> String {
+    match string{
+        None => "$-1\r\n".to_string(),
+        Some(value) => {
+            format!("${}\r\n{value}\r\n", value.len())
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod test {
-    use crate::parse::{parse_commands, tokenize};
+    use crate::command::parse_commands;
+    use crate::parse::tokenize;
     use super::*;
 
     #[test]
