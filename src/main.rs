@@ -9,39 +9,115 @@ mod db;
 mod command;
 mod parse;
 
-use clap::Parser;
+use clap::{Arg, Args, Command, Parser};
 
-
-#[derive(Parser)]
-struct Args {
-    #[arg(short, long, default_value = "6379")]
-    port: String,
-
+#[derive(Debug)]
+enum Role {
+    Master,
+    Replica {
+        host: String,
+        port: String,
+    },
 }
+
+#[derive(Debug)]
+struct Server {
+    port: String,
+    role: Role,
+    // db: DB,
+}
+
+impl Server {
+    pub fn new(port: String, role: Role) -> Self {
+        Self {
+            port,
+            role,
+            // db: Arc::new(Mutex::new(HashMap::<String, Entry>::new())),
+        }
+    }
+}
+//
+//
+// #[derive(Parser)]
+// struct Cli {
+//     #[arg(short, long, default_value = "6379")]
+//     port: String,
+//
+//     #[arg(short, long, default_value = None)]
+//     replica_of: Option<ReplicaOf>,
+// }
+//
+//
+// #[derive(Args, Clone)]
+// struct ReplicaOf {
+//     host: String,
+//     port: String,
+// }
 
 #[tokio::main]
 async fn main() {
-    let args = Args::parse();
-    start_server(&args.port).await;
+    let matches = Command::new("App Command Parser")
+        .version("1.0")
+        .author("Your Name")
+        .about("Parses app command with port and optional replicaof")
+        .arg(
+            Arg::new("port")
+                .short('p')
+                .long("port")
+                .value_name("PORT")
+                .help("Sets the port number")
+                .required(true)
+        )
+        .arg(
+            Arg::new("replicaof")
+                .long("replicaof")
+                .value_names(&["MASTER_HOST", "MASTER_PORT"])
+                .help("Sets the master host and port for replication")
+                .required(false),
+        )
+        .get_matches();
+
+    let port = matches.get_one::<String>("port").map_or(
+        "6379".to_string(), |v| v.clone(),
+    );
+    let role = match matches.get_many::<String>("replicaof") {
+        Some(mut values) => {
+            Role::Replica {
+                host: values.next().unwrap().clone(),
+                port: values.next().unwrap().clone(),
+            }
+        }
+        None => { Role::Master }
+    };
+
+    let server = Server::new(
+        port,
+        role,
+    );
+
+
+    start_server(server).await;
 }
 
-async fn start_server(port: &str) {
-    let addr = format!("127.0.0.1:{port}");
+async fn start_server(server: Server) {
+    let addr = format!("127.0.0.1:{port}", port = server.port);
     let listener = TcpListener::bind(addr).await.unwrap();
     let db: DB = Arc::new(Mutex::new(HashMap::<String, Entry>::new()));
-    println!("Server listening on port {port}");
+    println!("Server listening on port :{port}", port = server.port);
 
+    let server = Arc::new(server);
     while let Ok((stream, _)) = listener.accept().await {
         let db = db.clone();
+        let server = server.clone();
         tokio::spawn(async move {
-            if let Err(err) = handle_client(stream, db).await {
+            if let Err(err) = handle_client(stream, db, server).await {
                 eprintln!("Connection failed with: {err}")
             };
         });
     }
 }
 
-async fn handle_client(mut stream: TcpStream, db: DB) -> Result<()> {
+async fn handle_client(mut stream: TcpStream, db: DB, server: Arc<Server>) -> Result<()> {
     let peer_addr = stream.peer_addr().context(
         "fetching peer addr from socket"
     )?;
@@ -70,7 +146,7 @@ async fn handle_client(mut stream: TcpStream, db: DB) -> Result<()> {
                         for command in commands {
                             println!("DEBUG: got command: {command:?}");
                             // todo: better response buffer
-                            let response = command.handle(&db);
+                            let response = command.handle(&db, &server);
 
                             println!("DEBUG: response is {response:?}");
                             writer.write_all(response.as_ref()).await.with_context(

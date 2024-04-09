@@ -1,5 +1,6 @@
+use std::sync::Arc;
 use std::time::Duration;
-use crate::{db, parse};
+use crate::{db, parse, Role, Server};
 use crate::db::DB;
 use crate::parse::bulk_string;
 
@@ -56,7 +57,7 @@ impl Command {
         }
     }
 
-    pub(crate) fn handle(self, db: &DB) -> String {
+    pub(crate) fn handle(self, db: &DB, server: &Arc<Server>) -> String {
         match self {
             Command::Ping => {
                 "+PONG\r\n".to_owned()
@@ -72,7 +73,10 @@ impl Command {
                 "+OK\r\n".to_owned()
             }
             Command::Info => {
-                bulk_string(Some("role:master".to_string()))
+                match server.role {
+                    Role::Master => {bulk_string(Some("role:master".to_string()))}
+                    Role::Replica { .. } => {bulk_string(Some("role:slave".to_string()))}
+                }
             }
             Command::Err => "-ERR\r\n".to_owned(),
         }
