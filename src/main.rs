@@ -51,27 +51,34 @@ async fn handle_client(mut stream: TcpStream, db: DB) -> Result<()> {
                     || format!("convert buffer from client to string: {buf:?}")
                 )?;
                 let data = data.trim_end_matches('\0');
-                for command in parse_commands(data)? {
-                    println!("DEBUG: got command: {command:?}");
-                    let response = match command {
-                        Command::PING => "+PONG\r\n".to_owned(),
-                        Command::Echo(value) => as_redis_string(&value),
-                        Command::Get { key } => {
-                            match db.lock().unwrap().get(&key) {
-                                None => "$-1\r\n".to_owned(),
-                                Some(value) => as_redis_string(value),
-                            }
+                match parse_commands(data) {
+                    Ok(commands) => {
+                        for command in commands {
+                            println!("DEBUG: got command: {command:?}");
+                            let response = match command {
+                                Command::PING => "+PONG\r\n".to_owned(),
+                                Command::Echo(value) => as_redis_string(&value),
+                                Command::Get { key } => {
+                                    match db.lock().unwrap().get(&key) {
+                                        None => "$-1\r\n".to_owned(),
+                                        Some(value) => as_redis_string(value),
+                                    }
+                                }
+                                Command::Set { key, value } => {
+                                    db.lock().unwrap().insert(key, value);
+                                    "+OK\r\n".to_owned()
+                                }
+                                Command::Err => "-ERR\r\n".to_owned(),
+                            };
+                            println!("DEBUG: response is {response:?}");
+                            writer.write_all(response.as_ref()).await.with_context(
+                                || format!("writing response to client {response:?}")
+                            )?;
                         }
-                        Command::Set { key, value } => {
-                            db.lock().unwrap().insert(key, value);
-                            "+OK\r\n".to_owned()
-                        }
-                        Command::Err => "-ERR\r\n".to_owned(),
-                    };
-                    println!("DEBUG: response is {response:?}");
-                    writer.write_all(response.as_ref()).await.with_context(
-                        || format!("writing response to client {response:?}")
-                    )?;
+                    }
+                    Err(_) => {
+                        writer.write_all(b"-ERR\r\n").await?;
+                    }
                 }
             }
             Err(err) => {
