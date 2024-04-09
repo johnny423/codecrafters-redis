@@ -100,6 +100,15 @@ async fn start_server(server: Server) {
     let db: DB = Arc::new(Mutex::new(HashMap::<String, Entry>::new()));
     println!("Server listening on port :{port}", port = server.port);
 
+    if let Role::Replica { host, port } = &server.role {
+        let master_addr = format!("{host}:{port}");
+        let mut stream = TcpStream::connect(master_addr.clone()).await.unwrap();
+        stream.write_all(
+            parse::bulk_string(Some("ping".to_string())).as_bytes()
+        ).await.unwrap();
+        println!("Connected to master at :{master_addr}");
+    }
+
     let server = Arc::new(server);
     while let Ok((stream, _)) = listener.accept().await {
         let db = db.clone();
@@ -111,6 +120,7 @@ async fn start_server(server: Server) {
         });
     }
 }
+
 
 async fn handle_client(mut stream: TcpStream, db: DB, server: Arc<Server>) -> Result<()> {
     let peer_addr = stream.peer_addr().context(
