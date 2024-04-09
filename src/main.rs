@@ -47,7 +47,7 @@ async fn main() {
                 .long("port")
                 .value_name("PORT")
                 .help("Sets the port number")
-                .required(true)
+                .required(false)
         )
         .arg(
             Arg::new("replicaof")
