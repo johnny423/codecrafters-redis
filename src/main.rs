@@ -9,10 +9,20 @@ mod db;
 mod command;
 mod parse;
 
+use clap::Parser;
+
+
+#[derive(Parser)]
+struct Args {
+    #[arg(short, long, default_value = "6379")]
+    port: String,
+
+}
+
 #[tokio::main]
 async fn main() {
-    let port = "6379";
-    start_server(port).await;
+    let args = Args::parse();
+    start_server(&args.port).await;
 }
 
 async fn start_server(port: &str) {
