@@ -8,8 +8,6 @@ use clap::{Arg, Command as ClapCommand};
 use crate::command::{Command, parse_command};
 use crate::parse::{bulk_string, pairs};
 use std::{fmt::Write};
-use bytes::Bytes;
-use clap::error::ContextValue::String;
 
 mod db;
 mod command;
