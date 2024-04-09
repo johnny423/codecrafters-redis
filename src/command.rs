@@ -1,5 +1,7 @@
+use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::{db, parse, Server};
 use crate::db::DB;
 use crate::parse::{bulk_string, pairs};
@@ -59,10 +61,13 @@ impl Command {
         }
     }
 
-    pub(crate) fn handle(self, db: &DB, server: &Arc<Server>) -> String {
+    pub async fn handle(self, db: &DB, server: &Arc<Server>, writer: &mut impl AsyncWrite) -> anyhow::Result<()> {
         match &self {
             Command::Ping => {
-                "+PONG\r\n".to_owned()
+                writer.write_all(b"+PONG\r\n").await.with_context(
+                    || format!("writing response to client {response:?}")
+                )
+                
             }
             Command::Echo(value) => {
                 bulk_string(Some(value))
@@ -87,12 +92,14 @@ impl Command {
                 )
             }
             Command::Err => "-ERR\r\n".to_owned(),
-        }
+        };
+        Ok(())
     }
 }
 
 
-pub fn parse_commands(data: &str) -> anyhow::Result<Vec<Command>> {
+pub fn parse_command(data: &str) -> Command {
     let tokenz = parse::tokenize(data);
-    Ok(tokenz.iter().map(|v| Command::parse(v)).collect())
+    tokenz.first().map(|v| Command::parse(v)).unwrap()
+    // Ok(tokenz.iter().map(|v| Command::parse(v)).collect())
 }

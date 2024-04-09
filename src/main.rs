@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use anyhow::{Context, Result};
-use db::{DB, Entry};
-use clap::{Arg, Command};
+use db::{DB, Entry, get};
+use clap::{Arg, Command as ClapCommand};
+use crate::command::{Command, parse_command};
+use crate::parse::{bulk_string, pairs};
+use std::{fmt::Write};
 
 mod db;
 mod command;
@@ -57,7 +60,7 @@ impl Server {
 
 #[tokio::main]
 async fn main() {
-    let matches = Command::new("App Command Parser")
+    let matches = ClapCommand::new("App Command Parser")
         .version("1.0")
         .author("Your Name")
         .about("Parses app command with port and optional replicaof")
@@ -175,24 +178,46 @@ async fn handle_client(mut stream: TcpStream, db: DB, server: Arc<Server>) -> Re
                 let data = data.trim_end_matches('\0');
 
                 // parse requests into commands
-                match command::parse_commands(data) {
-                    Ok(commands) => {
-                        for command in commands {
-                            println!("DEBUG: got command: {command:?}");
-                            // todo: better response buffer
-                            let response = command.handle(&db, &server);
+                let command = parse_command(data);
 
-                            println!("DEBUG: response is {response:?}");
-                            writer.write_all(response.as_ref()).await.with_context(
-                                || format!("writing response to client {response:?}")
-                            )?;
-                        }
+                println!("DEBUG: got command: {command:?}");
+                match &command {
+                    Command::Ping => {
+                        writer.write_all(b"+PONG\r\n").await?;
                     }
-                    Err(e) => {
-                        eprintln!("ERROR: parsing failed with {e}");
+                    Command::Echo(value) => {
+                        writer.write_all(bulk_string(Some(value)).as_ref()).await?;
+                    }
+                    Command::Get { key } => {
+                        let val = bulk_string(get(&db, key).as_deref());
+                        writer.write_all(val.as_ref()).await?;
+                    }
+                    Command::Set { key, value, ex } => {
+                        db::set(&db, key.to_owned(), value.to_string(), ex.to_owned());
+                        writer.write_all(b"+OK\r\n").await?;
+                    }
+                    Command::Info => {
+                        let val = pairs(server.info().into_iter());
+                        writer.write_all(val.as_ref()).await?;
+                    }
+                    Command::Replconf => {
+                        writer.write_all(b"+OK\r\n").await?;
+                    }
+                    Command::Psync => {
+                        let val = format!(
+                            "+FULLRESYNC {repl_id} {offset}\r\n",
+                            repl_id = server.replid(), offset = server.offset()
+                        );
+                        writer.write_all(val.as_ref()).await?;
+
+                        let empty = encode_hex(b"524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2");
+                        let val = bulk_string(Some(&empty));
+                        writer.write_all(val.as_ref()).await?;
+                    }
+                    Command::Err => {
                         writer.write_all(b"-ERR\r\n").await?;
                     }
-                }
+                };
             }
             Err(err) => {
                 eprintln!("Error reading from socket: {}", err);
@@ -202,3 +227,11 @@ async fn handle_client(mut stream: TcpStream, db: DB, server: Arc<Server>) -> Re
     }
 }
 
+
+pub fn encode_hex(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        write!(&mut s, "{:02x}", b).unwrap();
+    }
+    s
+}
