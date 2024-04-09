@@ -10,7 +10,7 @@ mod db;
 mod command;
 mod parse;
 
-
+#[allow(dead_code)]
 #[derive(Debug)]
 enum Role {
     Master,
@@ -37,8 +37,8 @@ impl Server {
     pub fn info(&self) -> Vec<(&str, &str)> {
         let mut result = vec![];
         let role = match self.role {
-            Role::Master => {"master"}
-            Role::Replica { .. } => {"slave"}
+            Role::Master => { "master" }
+            Role::Replica { .. } => { "slave" }
         };
 
         result.push(("role", role));
@@ -66,7 +66,7 @@ async fn main() {
         .arg(
             Arg::new("replicaof")
                 .long("replicaof")
-                .value_names(&["MASTER_HOST", "MASTER_PORT"])
+                .value_names(["MASTER_HOST", "MASTER_PORT"])
                 .help("Sets the master host and port for replication")
                 .required(false),
         )

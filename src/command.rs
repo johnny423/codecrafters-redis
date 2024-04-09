@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
-use crate::{db, parse, Role, Server};
+use crate::{db, parse, Server};
 use crate::db::DB;
 use crate::parse::{bulk_string, pairs};
 
