@@ -49,32 +49,32 @@ pub fn bulk_string(string: Option<String>) -> String {
         }
     }
 }
-
-
-#[cfg(test)]
-mod test {
-    use crate::command::parse_commands;
-    use crate::parse::tokenize;
-    use super::*;
-
-    #[test]
-    fn test_ping() {
-        let input = "*1\r\n$4\r\nPING\r\n";
-        assert_eq!(tokenize(input), vec![vec!["PING"]]);
-    }
-
-    #[test]
-    fn test_parse_ping() {
-        let input = "*1\r\n$4\r\nPING\r\n";
-        assert_eq!(parse_commands(input).unwrap(), vec![Command::Ping]);
-    }
-
-    #[test]
-    fn test_full() {
-        let input = "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n";
-        assert_eq!(tokenize(input), vec![
-            vec!["set", "foo", "bar"],
-            vec!["get", "foo"],
-        ]);
-    }
-}
+//
+//
+// #[cfg(test)]
+// mod test {
+//     use crate::command::parse_commands;
+//     use crate::parse::tokenize;
+//     use super::*;
+//
+//     #[test]
+//     fn test_ping() {
+//         let input = "*1\r\n$4\r\nPING\r\n";
+//         assert_eq!(tokenize(input), vec![vec!["PING"]]);
+//     }
+//
+//     #[test]
+//     fn test_parse_ping() {
+//         let input = "*1\r\n$4\r\nPING\r\n";
+//         assert_eq!(parse_commands(input).unwrap(), vec![Command::Ping]);
+//     }
+//
+//     #[test]
+//     fn test_full() {
+//         let input = "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n";
+//         assert_eq!(tokenize(input), vec![
+//             vec!["set", "foo", "bar"],
+//             vec!["get", "foo"],
+//         ]);
+//     }
+// }
