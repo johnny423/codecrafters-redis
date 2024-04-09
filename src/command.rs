@@ -53,7 +53,7 @@ impl Command {
 
             ["replconf", _rest @ ..] => Command::Replconf,
 
-            ["PSYNC", _rest @ ..] => Command::Psync,
+            ["psync", _rest @ ..] => Command::Psync,
 
             _ => Command::Err,
         }
