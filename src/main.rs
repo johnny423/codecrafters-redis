@@ -1,10 +1,8 @@
 use std::collections::HashMap;
-use std::fmt::format;
-use std::ptr::write;
 use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
+use anyhow::{Result, Context};
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
 pub enum Command {
@@ -12,6 +10,7 @@ pub enum Command {
     Echo(String),
     Set { key: String, value: String },
     Get { key: String },
+    Err,
 }
 
 type DB = Arc<Mutex<HashMap<String, String>>>;
@@ -25,13 +24,18 @@ async fn main() {
     while let Ok((stream, _)) = listener.accept().await {
         let db = db.clone();
         tokio::spawn(async move {
-            handle_client(stream, db).await;
+            if let Err(err) = handle_client(stream, db).await {
+                eprintln!("Connection failed with: {err}")
+            };
         });
     }
 }
 
-async fn handle_client(mut stream: TcpStream, db: DB) {
-    println!("Client connected: {}", stream.peer_addr().unwrap());
+async fn handle_client(mut stream: TcpStream, db: DB) -> Result<()> {
+    let peer_addr = stream.peer_addr().context(
+        "fetching peer addr from socket"
+    )?;
+    println!("Client connected: {}", peer_addr);
 
     let (mut reader, mut writer) = stream.split();
 
@@ -39,41 +43,40 @@ async fn handle_client(mut stream: TcpStream, db: DB) {
     loop {
         match reader.read(&mut buf).await {
             Ok(0) => {
-                println!("Client disconnected: {}", stream.peer_addr().unwrap());
-                return;
+                println!("Client disconnected: {}", peer_addr);
+                return Ok(());
             }
-            Ok(n) => {
-                let data: String = String::from_utf8(buf.to_vec()).unwrap();
+            Ok(_n) => {
+                let data: String = String::from_utf8(buf.to_vec()).with_context(
+                    || format!("convert buffer from client to string: {buf:?}")
+                )?;
                 let data = data.trim_end_matches('\0');
-                for command in parse_commands(data) {
-                    match command {
-                        Command::PING => {
-                            writer.write_all(b"+PONG\r\n").await.unwrap();
-                        }
-                        Command::Echo(value) => {
-                            writer.write_all(as_redis_string(&value).as_ref()).await.unwrap();
-                        }
+                for command in parse_commands(data)? {
+                    println!("DEBUG: got command: {command:?}");
+                    let response = match command {
+                        Command::PING => "+PONG\r\n".to_owned(),
+                        Command::Echo(value) => as_redis_string(&value),
                         Command::Get { key } => {
-                            let response = match db.lock().unwrap().get(&key) {
-                                None => {
-                                    "$-1\r\n".to_string()
-                                }
-                                Some(value) => {
-                                    as_redis_string(value)
-                                }
-                            };
-                            writer.write_all(response.as_ref()).await.unwrap();
+                            match db.lock().unwrap().get(&key) {
+                                None => "$-1\r\n".to_owned(),
+                                Some(value) => as_redis_string(value),
+                            }
                         }
                         Command::Set { key, value } => {
                             db.lock().unwrap().insert(key, value);
-                            writer.write_all(b"+OK\r\n").await.unwrap();
+                            "+OK\r\n".to_owned()
                         }
-                    }
+                        Command::Err => "-ERR\r\n".to_owned(),
+                    };
+                    println!("DEBUG: response is {response:?}");
+                    writer.write_all(response.as_ref()).await.with_context(
+                        || format!("writing response to client {response:?}")
+                    )?;
                 }
             }
             Err(err) => {
                 eprintln!("Error reading from socket: {}", err);
-                return;
+                return Ok(());
             }
         }
     }
@@ -83,57 +86,55 @@ fn as_redis_string(value: &str) -> String {
     format!("${}\r\n{value}\r\n", value.len())
 }
 
-fn parse_commands(data: &str) -> Vec<Command> {
-    tokenize(&data).iter()
-        .filter_map(
-            |t| parse_command(&t)
-        )
-        .collect()
+fn parse_commands(data: &str) -> Result<Vec<Command>> {
+    let tokenz = tokenize(data)?;
+    Ok(tokenz.iter().map(parse_command).collect())
 }
 
 
-fn tokenize(input: &str) -> Vec<Vec<&str>> {
+fn tokenize(input: &str) -> Result<Vec<Vec<&str>>> {
     let mut lines = input.lines();
     let mut result = vec![];
     while let Some(value) = lines.next() {
-        println!("array length {value:?}");
         if value.is_empty() {
             break;
         }
-        let length: usize = value[1..].parse().unwrap();
-        let mut command = vec![];
-        for _ in 0..length {
-            let x = lines.next().unwrap();
-            println!("str length {x}");
 
-            let val = lines.next().unwrap();
-            println!("tokenizing {val}");
+        let length: usize = value[1..].parse().with_context(
+            || format!("parsing array length: {value:?}, for input: {input:?}")
+        )?;
+        let mut command = vec![];
+        for i in 0..length {
+            let _ = lines.next()
+                .with_context(|| format!("skipping value length at index {i}, for input: {input:?}"))?;
+            let val = lines.next()
+                .with_context(|| format!("parsing value at index {i}, for input: {input:?}"))?;
             command.push(val);
         }
         result.push(command);
     }
-    return result;
+    Ok(result)
 }
 
-fn parse_command(input: &Vec<&str>) -> Option<Command> {
+fn parse_command(input: &Vec<&str>) -> Command {
     match input.as_slice() {
-        ["ping"] | ["PING"] => { Some(Command::PING) }
+        ["ping"] | ["PING"] => { Command::PING }
         ["echo", rest @ ..] |
         ["ECHO", rest @ ..] => {
-            Some(Command::Echo(rest.join(" ")))
+            Command::Echo(rest.join(" "))
         }
         ["set", key, value] |
         ["SET", key, value] => {
-            Some(Command::Set {
+            Command::Set {
                 key: key.to_string(),
                 value: value.to_string(),
-            })
+            }
         }
         ["get", key] |
         ["GET", key] => {
-            Some(Command::Get { key: key.to_string() })
+            Command::Get { key: key.to_string() }
         }
-        _ => None,
+        _ => Command::Err,
     }
 }
 
@@ -144,114 +145,21 @@ mod test {
     #[test]
     fn test_ping() {
         let input = "*1\r\n$4\r\nPING\r\n";
-        assert_eq!(tokenize(input), vec![vec!["PING"]]);
+        assert_eq!(tokenize(input).unwrap(), vec![vec!["PING"]]);
     }
 
     #[test]
     fn test_parse_ping() {
         let input = "*1\r\n$4\r\nPING\r\n";
-        assert_eq!(parse_commands(input), vec![Command::PING]);
+        assert_eq!(parse_commands(input).unwrap(), vec![Command::PING]);
     }
 
     #[test]
     fn test_full() {
         let input = "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n";
-        assert_eq!(tokenize(input), vec![
+        assert_eq!(tokenize(input).unwrap(), vec![
             vec!["set", "foo", "bar"],
             vec!["get", "foo"],
         ]);
     }
 }
-
-
-//         println!("got new stream");
-//         let mut reader = BufReader::new(&reader);
-//
-//         let mut buf = [0; 512];
-//         let n = reader.read(&mut buf).unwrap();
-//         if n == 0 {
-//             break;
-//         }
-//         println!("got {n} bytes {buf:?}");
-//         let data = String::from_utf8(buf.to_vec())?;
-//
-//         println!("got {data:?}");
-//         let commands: Vec<Command> = parse_commands(&data.trim_end_matches('\0'));
-//         for command in commands {
-//             match command {
-//                 PING => { stream.write_all(b"+PONG\r\n")?; }
-//             }
-//         }
-//     }
-// }
-// );
-//     println!("Client connected: {}", stream.peer_addr().unwrap());
-//
-//     let (mut reader, mut writer) = stream.split();
-//
-//     // Echo messages back to the client
-//     let mut buf = [0; 1024];
-//     loop {
-//         match reader.read(&mut buf).await {
-//             Ok(0) => {
-//                 println!("Client disconnected: {}", stream.peer_addr().unwrap());
-//                 return;
-//             }
-//             Ok(n) => {
-//                 if let Err(err) = writer.write_all(&buf[..n]).await {
-//                     eprintln!("Error writing to socket: {}", err);
-//                     return;
-//                 }
-//             }
-//             Err(err) => {
-//                 eprintln!("Error reading from socket: {}", err);
-//                 return;
-//             }
-//         }
-//     }
-// }
-//
-// fn main() -> Result<()> {
-//     // You can use print statements as follows for debugging, they'll be visible when running tests.
-//     let address = "127.0.0.1:6379";
-//     let listener = TcpListener::bind(address).with_context(
-//         || format!("tcp bind to {address}")
-//     )?;
-//     println!("listening to {address}");
-//
-//
-//     for stream in listener.incoming() {
-//         match stream {
-//             Ok(mut stream) => {
-//                 thread::spawn(move ||
-//                     {
-//                         loop {
-//                             println!("got new stream");
-//                             let mut reader = BufReader::new(&stream);
-//
-//                             let mut buf = [0; 512];
-//                             let n = reader.read(&mut buf).unwrap();
-//                             if n == 0 {
-//                                 break;
-//                             }
-//                             println!("got {n} bytes {buf:?}");
-//                             let data = String::from_utf8(buf.to_vec())?;
-//
-//                             println!("got {data:?}");
-//                             let commands: Vec<Command> = parse_commands(&data.trim_end_matches('\0'));
-//                             for command in commands {
-//                                 match command {
-//                                     PING => { stream.write_all(b"+PONG\r\n")?; }
-//                                 }
-//                             }
-//                         }
-//                     }
-//                 );
-//             }
-//             Err(e) => {
-//                 println!("error: {}", e);
-//             }
-//         }
-//     }
-//     Ok(())
-// }
