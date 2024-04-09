@@ -16,45 +16,40 @@ pub enum Command {
 
 
 impl Command {
-    pub(crate) fn parse(input: &Vec<&str>) -> Command {
-        // todo: better handle case insensitivity
-        match input.as_slice() {
+    pub(crate) fn parse(input: &[&str]) -> Command {
+        let input_lower: Vec<&str> = input.iter().map(|s| s.to_lowercase().as_str()).collect();
+
+        match input_lower.as_slice() {
             // ping
-            ["ping"] | ["PING"] => { Command::Ping }
+            ["ping"] => Command::Ping,
 
-            // 'echo value'
-            ["echo", rest @ ..] |
-            ["ECHO", rest @ ..] => {
-                // todo should join?? or hold as vec?
-                Command::Echo(rest.join(" "))
-            }
+            // echo value
+            ["echo", rest @ ..] => Command::Echo(rest.join(" ")),
 
-            // 'set key value [px expire]'
-            ["set", key, value, rest @ ..] |
-            ["SET", key, value, rest @ ..] => {
-                let ex = match rest {
-                    ["px", ex] => {
-                        Some(Duration::from_millis(ex.parse::<u64>().unwrap()))
-                    }
-                    _ => None
-                };
-
+            // set key value [px expire]
+            ["set", key, value, "px", ex] => {
+                let ex_duration = ex.parse::<u64>().map(Duration::from_millis).ok();
                 Command::Set {
                     key: key.to_string(),
                     value: value.to_string(),
-                    ex,
+                    ex: ex_duration,
                 }
-            }
-            ["get", key] |
-            ["GET", key] => {
-                Command::Get { key: key.to_string() }
-            }
-            ["info", _rest @ ..] |
-            ["INFO", _rest @ ..] => {
-                Command::Info
-            }
+            },
+            ["set", key, value] => Command::Set {
+                key: key.to_string(),
+                value: value.to_string(),
+                ex: None,
+            },
+
+            // get key
+            ["get", key] => Command::Get { key: key.to_string() },
+
+            // info
+            ["info", _rest @ ..] => Command::Info,
+
             _ => Command::Err,
         }
+
     }
 
     pub(crate) fn handle(self, db: &DB, server: &Arc<Server>) -> String {
