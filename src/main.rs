@@ -124,6 +124,11 @@ async fn start_server(server: Server) {
             parse::array(&vec!["REPLCONF", "capa", "psync2"]).as_bytes()
         ).await.unwrap();
         stream.read(&mut buf).await.unwrap();
+
+        stream.write_all(
+            parse::array(&vec!["PSYNC", "?", "-1"]).as_bytes()
+        ).await.unwrap();
+        stream.read(&mut buf).await.unwrap();
         // todo check ok
     }
 
