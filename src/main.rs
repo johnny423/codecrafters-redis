@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::num::ParseIntError;
 use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -95,33 +96,43 @@ fn as_redis_string(value: &str) -> String {
 }
 
 fn parse_commands(data: &str) -> Result<Vec<Command>> {
-    let tokenz = tokenize(data)?;
+    let tokenz = tokenize(data);
     Ok(tokenz.iter().map(parse_command).collect())
 }
 
 
-fn tokenize(input: &str) -> Result<Vec<Vec<&str>>> {
+fn tokenize(input: &str) -> Vec<Vec<&str>> {
     let mut lines = input.lines();
     let mut result = vec![];
     while let Some(value) = lines.next() {
-        if value.is_empty() {
+        if value.is_empty() || !value.starts_with('*') {
             break;
         }
 
-        let length: usize = value[1..].parse().with_context(
-            || format!("parsing array length: {value:?}, for input: {input:?}")
-        )?;
+        let length = match value[1..].parse::<usize>() {
+            Ok(size) => size,
+            Err(_) => break, // todo log error
+        };
         let mut command = vec![];
         for i in 0..length {
-            let _ = lines.next()
-                .with_context(|| format!("skipping value length at index {i}, for input: {input:?}"))?;
-            let val = lines.next()
-                .with_context(|| format!("parsing value at index {i}, for input: {input:?}"))?;
+            if let None = lines.next() {
+                eprintln!("ERROR: skipping value length at index {i}, for input: {input:?}");
+                break;
+            }
+
+            let val = match lines.next() {
+                None => {
+                    eprintln!("ERROR: parsing value at index {i}, for input: {input:?}");
+                    break;
+                }
+                Some(v) => v,
+            };
+
             command.push(val);
         }
         result.push(command);
     }
-    Ok(result)
+    result
 }
 
 fn parse_command(input: &Vec<&str>) -> Command {
@@ -153,7 +164,7 @@ mod test {
     #[test]
     fn test_ping() {
         let input = "*1\r\n$4\r\nPING\r\n";
-        assert_eq!(tokenize(input).unwrap(), vec![vec!["PING"]]);
+        assert_eq!(tokenize(input), vec![vec!["PING"]]);
     }
 
     #[test]
@@ -165,7 +176,7 @@ mod test {
     #[test]
     fn test_full() {
         let input = "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n";
-        assert_eq!(tokenize(input).unwrap(), vec![
+        assert_eq!(tokenize(input), vec![
             vec!["set", "foo", "bar"],
             vec!["get", "foo"],
         ]);
