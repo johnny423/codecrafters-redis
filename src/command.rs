@@ -1,10 +1,6 @@
-use std::io::Write;
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
-use crate::{db, parse, Server};
-use crate::db::DB;
-use crate::parse::{bulk_string, pairs};
+use crate::{parse};
+
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
 pub enum Command {
@@ -60,46 +56,10 @@ impl Command {
             _ => Command::Err,
         }
     }
-
-    pub async fn handle(self, db: &DB, server: &Arc<Server>, writer: &mut impl AsyncWrite) -> anyhow::Result<()> {
-        match &self {
-            Command::Ping => {
-                writer.write_all(b"+PONG\r\n").await.with_context(
-                    || format!("writing response to client {response:?}")
-                )
-                
-            }
-            Command::Echo(value) => {
-                bulk_string(Some(value))
-            }
-            Command::Get { key } => {
-                bulk_string(db::get(db, key).as_deref())
-            }
-            Command::Set { key, value, ex } => {
-                db::set(db, key.to_owned(), value.to_string(), ex.to_owned());
-                "+OK\r\n".to_owned()
-            }
-            Command::Info => {
-                pairs(server.info().into_iter())
-            }
-            Command::Replconf => {
-                "+OK\r\n".to_owned()
-            }
-            Command::Psync => {
-                format!(
-                    "+FULLRESYNC {repl_id} {offset}\r\n",
-                    repl_id = server.replid(), offset = server.offset()
-                )
-            }
-            Command::Err => "-ERR\r\n".to_owned(),
-        };
-        Ok(())
-    }
 }
 
 
 pub fn parse_command(data: &str) -> Command {
     let tokenz = parse::tokenize(data);
     tokenz.first().map(|v| Command::parse(v)).unwrap()
-    // Ok(tokenz.iter().map(|v| Command::parse(v)).collect())
 }
