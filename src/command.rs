@@ -12,6 +12,7 @@ pub enum Command {
     Get { key: String },
     Info,
     Replconf,
+    Psync,
     Err,
 }
 
@@ -52,6 +53,8 @@ impl Command {
 
             ["replconf", _rest @ ..] => Command::Replconf,
 
+            ["PSYNC", _rest @ ..] => Command::Psync,
+
             _ => Command::Err,
         }
     }
@@ -76,6 +79,12 @@ impl Command {
             }
             Command::Replconf => {
                 "+OK\r\n".to_owned()
+            }
+            Command::Psync => {
+                format!(
+                    "+FULLRESYNC {repl_id} {offset}\r\n",
+                    repl_id = server.replid(), offset = server.offset()
+                )
             }
             Command::Err => "-ERR\r\n".to_owned(),
         }

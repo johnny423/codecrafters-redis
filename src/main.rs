@@ -33,6 +33,12 @@ impl Server {
             role,
         }
     }
+    pub fn replid(&self) -> &str {
+        "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+    }
+    pub fn offset(&self) -> &str {
+        "0"
+    }
 
     pub fn info(&self) -> Vec<(&str, &str)> {
         let mut result = vec![];
@@ -42,8 +48,8 @@ impl Server {
         };
 
         result.push(("role", role));
-        result.push(("master_replid", "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"));
-        result.push(("master_repl_offset", "0"));
+        result.push(("master_replid", self.replid()));
+        result.push(("master_repl_offset", self.offset()));
 
         result
     }
