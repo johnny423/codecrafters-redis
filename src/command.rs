@@ -11,6 +11,7 @@ pub enum Command {
     Set { key: String, value: String, ex: Option<Duration> },
     Get { key: String },
     Info,
+    Replconf,
     Err,
 }
 
@@ -36,7 +37,7 @@ impl Command {
                     value: value.to_string(),
                     ex: ex_duration,
                 }
-            },
+            }
             ["set", key, value] => Command::Set {
                 key: key.to_string(),
                 value: value.to_string(),
@@ -49,9 +50,10 @@ impl Command {
             // info
             ["info", _rest @ ..] => Command::Info,
 
+            ["replconf", _rest @ ..] => Command::Replconf,
+
             _ => Command::Err,
         }
-
     }
 
     pub(crate) fn handle(self, db: &DB, server: &Arc<Server>) -> String {
@@ -71,6 +73,9 @@ impl Command {
             }
             Command::Info => {
                 pairs(server.info().into_iter())
+            }
+            Command::Replconf => {
+                "+OK\r\n".to_owned()
             }
             Command::Err => "-ERR\r\n".to_owned(),
         }
