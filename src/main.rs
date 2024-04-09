@@ -76,7 +76,8 @@ async fn handle_client(mut stream: TcpStream, db: DB) -> Result<()> {
                             )?;
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        eprintln!("ERROR: parsing failed with {e}");
                         writer.write_all(b"-ERR\r\n").await?;
                     }
                 }
