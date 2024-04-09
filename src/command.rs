@@ -17,7 +17,9 @@ pub enum Command {
 
 impl Command {
     pub(crate) fn parse(input: &[&str]) -> Command {
-        let input_lower: Vec<&str> = input.iter().map(|s| s.to_lowercase().as_str()).collect();
+        let input_lower: Vec<String> = input.iter().map(|s| s.to_lowercase()).collect();
+        let input_lower: Vec<&str> = input_lower.iter().map(|s| s.as_ref()).collect();
+
 
         match input_lower.as_slice() {
             // ping
@@ -78,5 +80,5 @@ impl Command {
 
 pub fn parse_commands(data: &str) -> anyhow::Result<Vec<Command>> {
     let tokenz = parse::tokenize(data);
-    Ok(tokenz.iter().map(Command::parse).collect())
+    Ok(tokenz.iter().map(|v| Command::parse(v)).collect())
 }
