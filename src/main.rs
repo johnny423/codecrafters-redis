@@ -33,6 +33,20 @@ impl Server {
             role,
         }
     }
+
+    pub fn info(&self) -> Vec<(&str, &str)> {
+        let mut result = vec![];
+        let role = match self.role {
+            Role::Master => {"master"}
+            Role::Replica { .. } => {"slave"}
+        };
+
+        result.push(("role", role));
+        result.push(("master_replid", "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"));
+        result.push(("offset", "0"));
+
+        result
+    }
 }
 
 #[tokio::main]

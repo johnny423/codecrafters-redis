@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use crate::{db, parse, Role, Server};
 use crate::db::DB;
-use crate::parse::bulk_string;
+use crate::parse::{bulk_string, pairs};
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
 pub enum Command {
@@ -73,10 +73,7 @@ impl Command {
                 "+OK\r\n".to_owned()
             }
             Command::Info => {
-                match server.role {
-                    Role::Master => {bulk_string(Some("role:master".to_string()))}
-                    Role::Replica { .. } => {bulk_string(Some("role:slave".to_string()))}
-                }
+                pairs(server.info().into_iter())
             }
             Command::Err => "-ERR\r\n".to_owned(),
         }

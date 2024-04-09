@@ -32,6 +32,15 @@ pub fn tokenize(input: &str) -> Vec<Vec<&str>> {
     result
 }
 
+pub fn pairs<'a>(pairs: impl ExactSizeIterator<Item=(&'a str, &'a str)>) -> String {
+    let mut result = format!("*{}\r\n", len = pairs.len());
+    for (key, value) in pairs {
+        let a = bulk_string(Some(format!("{key}:{value}")));
+        result += &a;
+    }
+    result
+}
+
 pub fn bulk_string(string: Option<String>) -> String {
     match string {
         None => "$-1\r\n".to_string(),
