@@ -38,16 +38,24 @@ pub fn pairs<'a>(pairs: impl ExactSizeIterator<Item=(&'a str, &'a str)>) -> Stri
         let a = format!("{key}:{value}\r\n");
         result += &a;
     }
-    bulk_string(Some(result))
+    bulk_string(Some(&result))
 }
 
-pub fn bulk_string(string: Option<String>) -> String {
+pub fn bulk_string(string: Option<&str>) -> String {
     match string {
         None => "$-1\r\n".to_string(),
         Some(value) => {
             format!("${}\r\n{value}\r\n", value.len())
         }
     }
+}
+
+pub fn array(arr: &Vec<&str>) -> String {
+    let mut result = format!("*{len}\r\n", len = arr.len());
+    for val in arr {
+        result += &bulk_string(Some(val));
+    }
+    result
 }
 //
 //

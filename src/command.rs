@@ -58,7 +58,7 @@ impl Command {
     }
 
     pub(crate) fn handle(self, db: &DB, server: &Arc<Server>) -> String {
-        match self {
+        match &self {
             Command::Ping => {
                 "+PONG\r\n".to_owned()
             }
@@ -66,10 +66,10 @@ impl Command {
                 bulk_string(Some(value))
             }
             Command::Get { key } => {
-                bulk_string(db::get(db, &key))
+                bulk_string(db::get(db, key).as_deref())
             }
             Command::Set { key, value, ex } => {
-                db::set(db, key, value, ex);
+                db::set(db, key.to_owned(), value.to_string(), ex.to_owned());
                 "+OK\r\n".to_owned()
             }
             Command::Info => {

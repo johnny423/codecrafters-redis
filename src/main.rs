@@ -102,11 +102,12 @@ async fn start_server(server: Server) {
 
     if let Role::Replica { host, port } = &server.role {
         let master_addr = format!("{host}:{port}");
+        println!("Connecting to master at {master_addr}... ");
         let mut stream = TcpStream::connect(master_addr.clone()).await.unwrap();
         stream.write_all(
-            parse::bulk_string(Some("ping".to_string())).as_bytes()
+            parse::array(&vec!["ping"]).as_bytes()
         ).await.unwrap();
-        println!("Connected to master at :{master_addr}");
+        println!("Connected to master");
     }
 
     let server = Arc::new(server);
