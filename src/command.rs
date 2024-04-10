@@ -1,6 +1,6 @@
 use std::time::Duration;
-use crate::{parse};
 
+use crate::parse;
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
 pub enum Command {

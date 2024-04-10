@@ -1,6 +1,6 @@
-use std::time::{Duration, Instant};
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub enum Entry {
