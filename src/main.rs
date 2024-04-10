@@ -320,34 +320,3 @@ fn send_to_replicas(router: &Arc<Mutex<Router>>, replicas: &Arc<Mutex<HashSet<So
         router.lock().unwrap().send_to(replica, &msg)
     }
 }
-
-
-//
-// async fn client_handler(mut stream: TcpStream, db: DB, server: Arc<Server>) -> Result<()> {
-//     let peer_addr = stream.peer_addr().context(
-//         "fetching peer addr from socket"
-//     )?;
-//
-//     let mut buf = [0; 1024];
-//     while let Ok(n) = stream.read(&mut buf).await {
-//         if n == 0 {
-//             println!("Client disconnected: {}", peer_addr);
-//             break;
-//         }
-//
-//         // read client request
-//         let data: String = String::from_utf8(buf.to_vec()).with_context(
-//             || format!("convert buffer from client to string: {buf:?}")
-//         )?;
-//         let data = data.trim_end_matches('\0');
-//
-//         // parse requests into commands
-//         let command = parse_command(data);
-//
-//         println!("DEBUG: got command: {command:?}");
-//         execute(&command, &mut stream, &db, &server).await?;
-//     }
-//
-//
-//     Ok(())
-// }
