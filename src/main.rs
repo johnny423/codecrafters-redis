@@ -308,7 +308,7 @@ async fn execute(
         }
         Command::Psync => {
             let val = format!(
-                "+FULLNESS {repl_id} {offset}\r\n",
+                "+FULLRESYNC {repl_id} {offset}\r\n",
                 repl_id = server.replid(),
                 offset = server.offset()
             );
