@@ -74,23 +74,36 @@ type Tx = mpsc::UnboundedSender<String>;
 
 struct Router {
     peers: HashMap<SocketAddr, Tx>,
+    replicas: HashSet<SocketAddr>,
 }
 
 impl Router {
     fn new() -> Self {
         Router {
             peers: HashMap::new(),
+            replicas: HashSet::<SocketAddr>::new(),
         }
     }
 
-    fn send_to(&mut self, receiver: &SocketAddr, message: &str) {
-        if let Some(peer) = self.peers.get(&receiver) {
-            let _ = peer.send(message.into());
+    fn broadcast_to_replicas(&mut self, message: &str) {
+        for replica in self.replicas {
+            if let Some(peer) = self.peers.get(&replica) {
+                let _ = peer.send(message.into());
+            }
         }
     }
 
-    fn add(&mut self, receiver: SocketAddr, tx: Tx) {
+    fn register_peer(&mut self, receiver: SocketAddr, tx: Tx) {
         self.peers.insert(receiver, tx);
+    }
+
+    fn remove_peer(&mut self, receiver: &SocketAddr){
+        self.peers.remove(receiver);
+        self.replicas.remove(receiver);
+    }
+
+    fn register_replica(&mut self, replica: SocketAddr) {
+        self.replicas.insert(replica);
     }
 }
 
@@ -144,7 +157,7 @@ async fn start_server(server: Server) {
     let db: DB = Arc::new(Mutex::new(HashMap::<String, Entry>::new()));
     let server = Arc::new(server);
     let router = Arc::new(Mutex::new(Router::new()));
-    let replicas = Arc::new(Mutex::new(HashSet::<SocketAddr>::new()));
+
 
     println!("Server listening on port :{port}", port = server.port);
 
@@ -165,10 +178,9 @@ async fn start_server(server: Server) {
         let db = db.clone();
         let server = server.clone();
         let router = Arc::clone(&router);
-        let replicas = Arc::clone(&replicas);
 
         tokio::spawn(
-            client(stream, peer, db, server, router, replicas)
+            client(stream, peer, db, server, router)
         );
     }
 }
@@ -179,10 +191,9 @@ async fn client(
     db: DB,
     server: Arc<Server>,
     router: Arc<Mutex<Router>>,
-    replicas: Arc<Mutex<HashSet<SocketAddr>>>,
 ) {
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-    router.lock().unwrap().add(peer, tx.clone());
+    router.lock().unwrap().register_peer(peer, tx.clone());
 
     let mut buf = [0; 1024];
     loop {
@@ -205,7 +216,7 @@ async fn client(
                     let command = parse_command(data);
 
                     println!("DEBUG: got command: {command:?}");
-                    execute(&command, &mut stream, &peer, &db, &server, &router, &replicas).await.unwrap();
+                    execute(&command, &mut stream, &peer, &db, &server, &router).await.unwrap();
                 }
                 Err(_err) =>{
                     break
@@ -214,8 +225,8 @@ async fn client(
         }
     }
 
-    let mut guard = replicas.lock().unwrap();
-    guard.remove(&peer);
+    let mut guard = router.lock().unwrap();
+    guard.remove_peer(&peer);
 }
 
 
@@ -258,7 +269,6 @@ async fn execute(
     db: &DB,
     server: &Arc<Server>,
     router: &Arc<Mutex<Router>>,
-    replicas: &Arc<Mutex<HashSet<SocketAddr>>>,
 ) -> Result<()> {
     match &command {
         Command::Ping => {
@@ -275,8 +285,11 @@ async fn execute(
             db::set(db, key.to_owned(), value.to_string(), ex.to_owned());
             stream.write_all(OK).await?;
 
-            let msg = array(&vec!["set", key, value]);
-            send_to_replicas(router, replicas, &msg);
+            {
+                let msg = array(&vec!["set", key, value]);
+                let mut guard = router.lock().unwrap();
+                guard.broadcast_to_replicas(&msg)
+            }
         }
         Command::Info => {
             let val = pairs(server.info().into_iter());
@@ -301,8 +314,8 @@ async fn execute(
             stream.write_all(val.as_ref()).await?;
             stream.write_all(&empty).await?;
 
-            let mut guard = replicas.lock().unwrap();
-            guard.insert(*peer);
+            let mut guard = router.lock().unwrap();
+            guard.register_replica(*peer);
         }
         Command::Err => {
             stream.write_all(ERR).await?;
