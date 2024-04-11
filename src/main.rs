@@ -86,8 +86,8 @@ impl Router {
     }
 
     fn broadcast_to_replicas(&mut self, message: &str) {
-        for replica in self.replicas {
-            if let Some(peer) = self.peers.get(&replica) {
+        for replica in &self.replicas {
+            if let Some(peer) = self.peers.get(replica) {
                 let _ = peer.send(message.into());
             }
         }
@@ -97,7 +97,7 @@ impl Router {
         self.peers.insert(receiver, tx);
     }
 
-    fn remove_peer(&mut self, receiver: &SocketAddr){
+    fn remove_peer(&mut self, receiver: &SocketAddr) {
         self.peers.remove(receiver);
         self.replicas.remove(receiver);
     }
@@ -164,8 +164,9 @@ async fn start_server(server: Server) {
     if let Role::Replica { host, port } = &server.role {
         let master_addr = format!("{host}:{port}", );
         let server = server.clone();
+        let db = Arc::clone(&db);
         tokio::spawn(
-            sync_with_master(master_addr, server)
+            sync_with_master(master_addr, server, db)
         );
     }
 
@@ -204,22 +205,14 @@ async fn client(
                 let _ = stream.write_all(msg.as_ref()).await;
             }
             result = stream.read(&mut buf)  =>  match result {
-                Ok(n) => {
-                    if n == 0{
-                        break
-                    }
-                    // todo: handle
-                    let data: String = String::from_utf8(buf.to_vec()).unwrap();
-                    let data = data.trim_end_matches('\0');
-
-                    // parse requests into commands
-                    let command = parse_command(data);
-
-                    println!("DEBUG: got command: {command:?}");
-                    execute(&command, &mut stream, &peer, &db, &server, &router).await.unwrap();
-                }
-                Err(_err) =>{
+                Ok(0) | Err(_) => {
                     break
+                }
+                Ok(n) => {
+                    // todo: handle
+                    let data = String::from_utf8(buf[..n].to_vec()).unwrap();
+                    let command=  parse_command(&data);
+                    execute(&command, &mut stream, &peer, &db, &server, &router).await.unwrap();
                 }
             }
         }
@@ -230,35 +223,49 @@ async fn client(
 }
 
 
-async fn sync_with_master(master_addr: String, server: Arc<Server>) {
+async fn sync_with_master(master_addr: String, server: Arc<Server>, db: DB) {
     println!("Connecting to master at {master_addr}... ");
     let mut stream = TcpStream::connect(master_addr.clone()).await.unwrap();
 
     println!("Connected to master! starting handshake... ");
     stream.write_all(
-        parse::array(&vec!["ping"]).as_bytes()
+        array(&vec!["ping"]).as_bytes()
     ).await.unwrap();
 
     let mut buf = [0; 1024];
-    stream.read(&mut buf).await.unwrap();
+    let _ = stream.read(&mut buf).await.unwrap();
     // todo check pong
 
     stream.write_all(
-        parse::array(&vec!["REPLCONF", "listening-port", &server.port]).as_bytes()
+        array(&vec!["REPLCONF", "listening-port", &server.port]).as_bytes()
     ).await.unwrap();
-    stream.read(&mut buf).await.unwrap();
+    let _ = stream.read(&mut buf).await.unwrap();
     // todo check ok
 
     stream.write_all(
-        parse::array(&vec!["REPLCONF", "capa", "psync2"]).as_bytes()
+        array(&vec!["REPLCONF", "capa", "psync2"]).as_bytes()
     ).await.unwrap();
-    stream.read(&mut buf).await.unwrap();
+    let _ = stream.read(&mut buf).await.unwrap();
 
     stream.write_all(
-        parse::array(&vec!["PSYNC", "?", "-1"]).as_bytes()
+        array(&vec!["PSYNC", "?", "-1"]).as_bytes()
     ).await.unwrap();
-    stream.read(&mut buf).await.unwrap();
+    let _ = stream.read(&mut buf).await.unwrap();
     // todo check ok
+
+    // read the file
+    let _ = stream.read(&mut buf).await.unwrap();
+
+    while let Ok(n) = stream.read(&mut buf).await {
+        let data = String::from_utf8(buf[..n].to_vec()).unwrap();
+        let tokenz = tokenize(&data);
+        for command in tokenz.iter()
+            .map(|v| Command::parse(v)) {
+            if let Command::Set { key, value, ex } = command {
+                db::set(&db, key.to_owned(), value.to_string(), ex.to_owned());
+            }
+        }
+    }
 }
 
 
@@ -301,7 +308,7 @@ async fn execute(
         }
         Command::Psync => {
             let val = format!(
-                "+FULLRESYNC {repl_id} {offset}\r\n",
+                "+FULLNESS {repl_id} {offset}\r\n",
                 repl_id = server.replid(),
                 offset = server.offset()
             );
@@ -322,14 +329,4 @@ async fn execute(
         }
     };
     Ok(())
-}
-
-fn send_to_replicas(router: &Arc<Mutex<Router>>, replicas: &Arc<Mutex<HashSet<SocketAddr>>>, msg: &String) {
-    let replicas_guard = replicas.lock().unwrap();
-    let replicas = replicas_guard.clone();
-    drop(replicas_guard);
-
-    for replica in replicas.iter() {
-        router.lock().unwrap().send_to(replica, &msg)
-    }
 }
