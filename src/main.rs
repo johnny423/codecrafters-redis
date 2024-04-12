@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use clap::{Arg, Command as ClapCommand};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
@@ -224,48 +224,79 @@ async fn client(
 
 
 async fn sync_with_master(master_addr: String, server: Arc<Server>, db: DB) {
-    println!("Connecting to master at {master_addr}... ");
+    println!("Replica: Connecting to master at {master_addr}... ");
     let mut stream = TcpStream::connect(master_addr.clone()).await.unwrap();
 
-    println!("Connected to master! starting handshake... ");
+    println!("Replica: Connected to master! starting handshake... ");
     stream.write_all(
         array(&vec!["ping"]).as_bytes()
     ).await.unwrap();
 
-    let mut buf = [0; 1024];
-    let _ = stream.read(&mut buf).await.unwrap();
-    // todo check pong
+    // +pong\r\n
+    let mut buf = [0; 7];
+    stream.read_exact(&mut buf).await.unwrap();
+    println!("waiting for pong got: {buf:?}");
 
     stream.write_all(
         array(&vec!["REPLCONF", "listening-port", &server.port]).as_bytes()
     ).await.unwrap();
-    let _ = stream.read(&mut buf).await.unwrap();
-    // todo check ok
+
+    // +ok\r\n
+    let mut buf = [0; 5];
+    stream.read_exact(&mut buf).await.unwrap();
+    println!("waiting for ok got: {buf:?}");
 
     stream.write_all(
         array(&vec!["REPLCONF", "capa", "psync2"]).as_bytes()
     ).await.unwrap();
-    let _ = stream.read(&mut buf).await.unwrap();
+
+    // +ok\r\n
+    stream.read_exact(&mut buf).await.unwrap();
+    println!("waiting for ok got: {buf:?}");
+
 
     stream.write_all(
         array(&vec!["PSYNC", "?", "-1"]).as_bytes()
     ).await.unwrap();
-    let _ = stream.read(&mut buf).await.unwrap();
-    // todo check ok
 
-    // read the file
-    let _ = stream.read(&mut buf).await.unwrap();
+    let (reader, writer) = stream.split();
+    let mut reader = BufReader::new(reader);
 
-    while let Ok(n) = stream.read(&mut buf).await {
-        let data = String::from_utf8(buf[..n].to_vec()).unwrap();
-        let tokenz = tokenize(&data);
-        for command in tokenz.iter()
-            .map(|v| Command::parse(v)) {
-            if let Command::Set { key, value, ex } = command {
-                db::set(&db, key.to_owned(), value.to_string(), ex.to_owned());
+    let mut x = reader.lines();
+    //+FULLRESYNC .... 0 \r\n
+    let fullresync = x.next_line().await.unwrap().unwrap();
+    println!("fullresync {fullresync}");
+
+    // file length - holly shit :(
+    let file_length = x.next_line().await.unwrap().unwrap()[1..].parse().unwrap();
+    println!("file_length {file_length}");
+
+    let mut file_buff = vec![0; file_length];
+    let reader = x.get_mut();
+    reader.read_exact(&mut file_buff).await.unwrap();
+    println!("file buff {file_buff:?}");
+
+    let mut buf = [0; 1024];
+    while let Ok(n) = reader.read(&mut buf).await {
+        if n == 0 {
+            break;
+        }
+        let vec1 = buf[..n].to_vec();
+        println!("Replica got data: {vec1:?}");
+        if let Ok(data) = String::from_utf8(vec1) {
+            println!("Replica got string: {data}");
+            let tokenz = tokenize(&data);
+            for command in tokenz.iter()
+                .map(|v| Command::parse(v)) {
+                if let Command::Set { key, value, ex } = command {
+                    db::set(&db, key.to_owned(), value.to_string(), ex.to_owned());
+                    println!("Replica: wrote {key} {value}")
+                }
             }
         }
     }
+
+    println!("Master disconnected...")
 }
 
 
@@ -320,6 +351,7 @@ async fn execute(
             let val = format!("${}\r\n", empty.len());
             stream.write_all(val.as_ref()).await?;
             stream.write_all(&empty).await?;
+            println!("Master: finish sending file");
 
             let mut guard = router.lock().unwrap();
             guard.register_replica(*peer);
