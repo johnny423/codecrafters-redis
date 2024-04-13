@@ -60,5 +60,5 @@ pub async fn tokenize(input: &mut BufReader<&mut ReadHalf<'_>>) -> anyhow::Resul
         }
         array.push(response.strip_suffix("\r\n").expect("split by lines").to_string());
     }
-    return Ok(Some(array));
+    Ok(Some(array))
 }
