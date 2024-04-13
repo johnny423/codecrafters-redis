@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use crate::parse;
-
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
 pub enum Command {
     Ping,
@@ -16,7 +14,7 @@ pub enum Command {
 
 
 impl Command {
-    pub(crate) fn parse(input: &[&str]) -> Command {
+    pub(crate) fn parse(input: &[String]) -> Command {
         let input_lower: Vec<String> = input.iter().map(|s| s.to_lowercase()).collect();
         let input_lower: Vec<&str> = input_lower.iter().map(|s| s.as_ref()).collect();
 
@@ -58,8 +56,3 @@ impl Command {
     }
 }
 
-
-pub fn parse_command(data: &str) -> Command {
-    let tokenz = parse::tokenize(data);
-    tokenz.first().map(|v| Command::parse(v)).unwrap()
-}
