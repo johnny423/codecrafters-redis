@@ -1,12 +1,14 @@
-use tokio::net::TcpStream;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc;
+
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::tcp::WriteHalf;
-use crate::db::DB;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc;
+
 use crate::{db, EMPTY, ERR, OK, PONG, Router, Server};
-use crate::command::Command;
+use crate::command::{Command, Replconf};
+use crate::db::DB;
 use crate::parse::{array, bulk_string, pairs, tokenize};
 
 pub async fn client_handler(
@@ -81,9 +83,11 @@ async fn handle_client_command(
             let val = pairs(server.info().into_iter());
             stream.write_all(val.as_ref()).await?;
         }
-        Command::Replconf => {
+        Command::Replconf(internal) => {
             // todo: save info
-            stream.write_all(OK).await?;
+            if let Replconf::ListeningPort(_) | Replconf::Capa(_) = internal {
+                stream.write_all(OK).await?;
+            }
         }
         Command::Psync => {
             let val = format!(

@@ -9,14 +9,6 @@ use crate::command::{Command, Replconf};
 use crate::db::DB;
 use crate::parse::array;
 
-#[derive(Debug)]
-enum Handshake {
-    Ping,
-    ConfPort,
-    ConfFormat,
-    SyncFile,
-}
-
 pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB) -> Result<()> {
     let (mut reader, mut writer) = stream.split();
     let mut reader = BufReader::new(&mut reader);
@@ -70,8 +62,7 @@ pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB
     println!("file buff {:?}", file_buff);
     let _ = reader.read_exact(&mut file_buff).await;
 
-
-    // sync updates
+    // Handshake ended now wait for commands
     while let Some(tokenz) = parse::tokenize(&mut reader).await? {
         let command = Command::parse(&tokenz);
         match command {
