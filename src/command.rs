@@ -1,13 +1,21 @@
 use std::time::Duration;
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
+pub enum Replconf {
+    ListeningPort(String),
+    Capa(String),
+    GetAck(String),
+    Ack(String)
+}
+
+#[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
 pub enum Command {
     Ping,
     Echo(String),
     Set { key: String, value: String, ex: Option<Duration> },
     Get { key: String },
     Info,
-    Replconf,
+    Replconf(Replconf),
     Psync,
     Err,
 }
@@ -47,7 +55,18 @@ impl Command {
             // info
             ["info", _rest @ ..] => Command::Info,
 
-            ["replconf", _rest @ ..] => Command::Replconf,
+            ["replconf", "listening-port", port] => {
+                Command::Replconf(Replconf::ListeningPort(port.to_string()))
+            },
+            ["replconf", "capa", val] => {
+                Command::Replconf(Replconf::Capa(val.to_string()))
+            },
+            ["replconf", "getack", val] => {
+                Command::Replconf(Replconf::GetAck(val.to_string()))
+            },
+            ["replconf", "ack", val] => {
+                Command::Replconf(Replconf::Ack(val.to_string()))
+            },
 
             ["psync", _rest @ ..] => Command::Psync,
 
