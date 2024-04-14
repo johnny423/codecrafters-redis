@@ -6,10 +6,10 @@ use tokio::net::tcp::WriteHalf;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
-use crate::{db, EMPTY, ERR, OK, PONG, Router, Server};
 use crate::command::{Command, Replconf};
 use crate::db::DB;
 use crate::parse::{array, bulk_string, pairs, tokenize};
+use crate::{db, Router, Server, EMPTY, ERR, OK, PONG};
 
 pub async fn client_handler(
     mut stream: TcpStream,
@@ -48,7 +48,6 @@ pub async fn client_handler(
     let mut guard = router.lock().unwrap();
     guard.remove_peer(&peer);
 }
-
 
 async fn handle_client_command(
     command: &Command,
@@ -97,8 +96,7 @@ async fn handle_client_command(
             );
             stream.write_all(val.as_ref()).await?;
 
-            let empty = hex::decode(EMPTY)
-                .unwrap();
+            let empty = hex::decode(EMPTY).unwrap();
 
             let val = format!("${}\r\n", empty.len());
             stream.write_all(val.as_ref()).await?;
@@ -109,7 +107,13 @@ async fn handle_client_command(
             guard.register_replica(*peer);
         }
         Command::Wait => {
-            stream.write_all(b":0\r\n").await?;
+            let count = {
+                let guard = router.lock().unwrap();
+                guard.count_replicas()
+            };
+            stream
+                .write_all(format!(":{}\r\n", count).as_bytes())
+                .await?;
         }
         Command::Err => {
             stream.write_all(ERR).await?;

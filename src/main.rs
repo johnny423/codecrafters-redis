@@ -6,16 +6,15 @@ use clap::{Arg, Command as ClapCommand};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
-use db::{DB, Entry};
+use db::{Entry, DB};
 
 use crate::replica::sync_with_master;
 
-mod db;
 mod command;
+mod db;
+mod master;
 mod parse;
 mod replica;
-mod master;
-
 
 const EMPTY: &[u8] = b"524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
 const PONG: &[u8] = b"+PONG\r\n";
@@ -26,10 +25,7 @@ const ERR: &[u8] = b"-ERR\r\n";
 #[derive(Debug)]
 enum Role {
     Master,
-    Replica {
-        host: String,
-        port: String,
-    },
+    Replica { host: String, port: String },
 }
 
 #[derive(Debug)]
@@ -40,10 +36,7 @@ struct Server {
 
 impl Server {
     pub fn new(port: String, role: Role) -> Self {
-        Self {
-            port,
-            role,
-        }
+        Self { port, role }
     }
     pub fn replid(&self) -> &str {
         "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
@@ -55,8 +48,8 @@ impl Server {
     pub fn info(&self) -> Vec<(&str, &str)> {
         let mut result = vec![];
         let role = match self.role {
-            Role::Master => { "master" }
-            Role::Replica { .. } => { "slave" }
+            Role::Master => "master",
+            Role::Replica { .. } => "slave",
         };
 
         result.push(("role", role));
@@ -66,7 +59,6 @@ impl Server {
         result
     }
 }
-
 
 type Tx = mpsc::UnboundedSender<String>;
 // type Rx = mpsc::UnboundedReceiver<String>;
@@ -104,8 +96,11 @@ impl Router {
     fn register_replica(&mut self, replica: SocketAddr) {
         self.replicas.insert(replica);
     }
-}
 
+    fn count_replicas(&self) -> usize {
+        self.replicas.len()
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -119,7 +114,7 @@ async fn main() {
                 .long("port")
                 .value_name("PORT")
                 .help("Sets the port number")
-                .required(false)
+                .required(false),
         )
         .arg(
             Arg::new("replicaof")
@@ -130,24 +125,18 @@ async fn main() {
         )
         .get_matches();
 
-    let port = matches.get_one::<String>("port").map_or(
-        "6379".to_string(), |v| v.clone(),
-    );
+    let port = matches
+        .get_one::<String>("port")
+        .map_or("6379".to_string(), |v| v.clone());
     let role = match matches.get_many::<String>("replicaof") {
-        Some(mut values) => {
-            Role::Replica {
-                host: values.next().unwrap().clone(),
-                port: values.next().unwrap().clone(),
-            }
-        }
-        None => { Role::Master }
+        Some(mut values) => Role::Replica {
+            host: values.next().unwrap().clone(),
+            port: values.next().unwrap().clone(),
+        },
+        None => Role::Master,
     };
 
-    let server = Server::new(
-        port,
-        role,
-    );
-
+    let server = Server::new(port, role);
 
     start_server(server).await;
 }
@@ -157,22 +146,18 @@ async fn start_server(server: Server) {
     let server = Arc::new(server);
     let router = Arc::new(Mutex::new(Router::new()));
 
-
-
     if let Role::Replica { host, port } = &server.role {
-        let master_addr = format!("{host}:{port}", );
+        let master_addr = format!("{host}:{port}",);
         let server = server.clone();
         let db = Arc::clone(&db);
-        tokio::spawn(
-            async move {
-                let stream = TcpStream::connect(master_addr.clone()).await.unwrap();
-                if let Err(err) = sync_with_master(stream, server, db).await {
-                    eprintln!("[ERROR] Replica: Disconnected from master with error: {err}")
-                } else {
-                    eprintln!("[INFO] Replica: Disconnected from master")
-                }
+        tokio::spawn(async move {
+            let stream = TcpStream::connect(master_addr.clone()).await.unwrap();
+            if let Err(err) = sync_with_master(stream, server, db).await {
+                eprintln!("[ERROR] Replica: Disconnected from master with error: {err}")
+            } else {
+                eprintln!("[INFO] Replica: Disconnected from master")
             }
-        );
+        });
     }
 
     let addr = format!("127.0.0.1:{port}", port = server.port);
@@ -186,8 +171,6 @@ async fn start_server(server: Server) {
         let server = server.clone();
         let router = Arc::clone(&router);
 
-        tokio::spawn(
-            master::client_handler(stream, peer, db, server, router)
-        );
+        tokio::spawn(master::client_handler(stream, peer, db, server, router));
     }
 }
