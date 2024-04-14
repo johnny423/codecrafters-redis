@@ -4,10 +4,10 @@ use anyhow::{anyhow, Result};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
-use crate::{db, parse, Server};
 use crate::command::{Command, Replconf};
 use crate::db::DB;
 use crate::parse::array;
+use crate::{db, parse, Server};
 
 pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB) -> Result<()> {
     let (mut reader, mut writer) = stream.split();
@@ -24,9 +24,9 @@ pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB
     }
 
     // ConfPort
-    writer.write_all(
-        array(&vec!["REPLCONF", "listening-port", &server.port]).as_bytes()
-    ).await?;
+    writer
+        .write_all(array(&vec!["REPLCONF", "listening-port", &server.port]).as_bytes())
+        .await?;
     response.clear();
     reader.read_line(&mut response).await?;
     if response.to_lowercase() != "+ok\r\n".to_lowercase() {
@@ -34,9 +34,9 @@ pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB
     }
 
     // ConfFormat
-    writer.write_all(
-        array(&vec!["REPLCONF", "capa", "psync2"]).as_bytes()
-    ).await?;
+    writer
+        .write_all(array(&vec!["REPLCONF", "capa", "psync2"]).as_bytes())
+        .await?;
     response.clear();
     reader.read_line(&mut response).await?;
     if response.to_lowercase() != "+ok\r\n".to_lowercase() {
@@ -45,9 +45,9 @@ pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB
 
     // SyncFile
     response.clear();
-    writer.write_all(
-        array(&vec!["PSYNC", "?", "-1"]).as_bytes()
-    ).await?;
+    writer
+        .write_all(array(&vec!["PSYNC", "?", "-1"]).as_bytes())
+        .await?;
     reader.read_line(&mut response).await?;
     // todo assert response
 
@@ -79,7 +79,6 @@ pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB
         }
         offset += count;
     }
-
 
     Ok(())
 }

@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::tcp::ReadHalf;
 
-pub fn pairs<'a>(pairs: impl ExactSizeIterator<Item=(&'a str, &'a str)>) -> String {
+pub fn pairs<'a>(pairs: impl ExactSizeIterator<Item = (&'a str, &'a str)>) -> String {
     let mut result = String::new();
     for (key, value) in pairs {
         let a = format!("{key}:{value}\r\n");
@@ -28,7 +28,9 @@ pub fn array(arr: &Vec<&str>) -> String {
     result
 }
 
-pub async fn tokenize(input: &mut BufReader<&mut ReadHalf<'_>>) -> anyhow::Result<Option<(Vec<String>, usize)>> {
+pub async fn tokenize(
+    input: &mut BufReader<&mut ReadHalf<'_>>,
+) -> anyhow::Result<Option<(Vec<String>, usize)>> {
     let mut count = 0;
     let mut response = String::new();
     let n = input.read_line(&mut response).await?;
@@ -38,10 +40,16 @@ pub async fn tokenize(input: &mut BufReader<&mut ReadHalf<'_>>) -> anyhow::Resul
     count += n;
 
     if !response.starts_with('*') {
-        return Err(anyhow!("Expected an array (starts with *) but got {response} "));
+        return Err(anyhow!(
+            "Expected an array (starts with *) but got {response} "
+        ));
     }
 
-    let length = match response[1..].strip_suffix("\r\n").expect("split by lines").parse::<usize>() {
+    let length = match response[1..]
+        .strip_suffix("\r\n")
+        .expect("split by lines")
+        .parse::<usize>()
+    {
         Ok(size) => size,
         Err(err) => return Err(anyhow!("Failed to parse size {err}")),
     };
@@ -55,14 +63,19 @@ pub async fn tokenize(input: &mut BufReader<&mut ReadHalf<'_>>) -> anyhow::Resul
             return Err(anyhow!("EOF"));
         }
         count += n;
-        
+
         let mut response = String::new();
         let n = input.read_line(&mut response).await?;
         if n == 0 {
             return Err(anyhow!("EOF"));
         }
         count += n;
-        array.push(response.strip_suffix("\r\n").expect("split by lines").to_string());
+        array.push(
+            response
+                .strip_suffix("\r\n")
+                .expect("split by lines")
+                .to_string(),
+        );
     }
     Ok(Some((array, count)))
 }
