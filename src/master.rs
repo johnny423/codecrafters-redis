@@ -35,7 +35,7 @@ pub async fn client_handler(
                     Ok(None) | Err(_) => {
                         break
                     }
-                    Ok(Some(arr)) => {
+                    Ok(Some((arr, _count))) => {
                         // todo: handle
                         let command=  Command::parse(&arr);
                         handle_client_command(&command, &mut writer, &peer, &db, &server, &router).await.unwrap();

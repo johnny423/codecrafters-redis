@@ -28,12 +28,14 @@ pub fn array(arr: &Vec<&str>) -> String {
     result
 }
 
-pub async fn tokenize(input: &mut BufReader<&mut ReadHalf<'_>>) -> anyhow::Result<Option<Vec<String>>> {
+pub async fn tokenize(input: &mut BufReader<&mut ReadHalf<'_>>) -> anyhow::Result<Option<(Vec<String>, usize)>> {
+    let mut count = 0;
     let mut response = String::new();
-    let x = input.read_line(&mut response).await?;
-    if x == 0 {
+    let n = input.read_line(&mut response).await?;
+    if n == 0 {
         return Ok(None);
     }
+    count += n;
 
     if !response.starts_with('*') {
         return Err(anyhow!("Expected an array (starts with *) but got {response} "));
@@ -48,17 +50,19 @@ pub async fn tokenize(input: &mut BufReader<&mut ReadHalf<'_>>) -> anyhow::Resul
     for _ in 0..length {
         // read value size
         let mut response = String::new();
-        let x = input.read_line(&mut response).await?;
-        if x == 0 {
+        let n = input.read_line(&mut response).await?;
+        if n == 0 {
             return Err(anyhow!("EOF"));
         }
-
+        count += n;
+        
         let mut response = String::new();
-        let x = input.read_line(&mut response).await?;
-        if x == 0 {
+        let n = input.read_line(&mut response).await?;
+        if n == 0 {
             return Err(anyhow!("EOF"));
         }
+        count += n;
         array.push(response.strip_suffix("\r\n").expect("split by lines").to_string());
     }
-    Ok(Some(array))
+    Ok(Some((array, count)))
 }

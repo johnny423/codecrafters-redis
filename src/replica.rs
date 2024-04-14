@@ -62,8 +62,9 @@ pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB
     println!("file buff {:?}", file_buff);
     let _ = reader.read_exact(&mut file_buff).await;
 
+    let mut offset: usize = 0;
     // Handshake ended now wait for commands
-    while let Some(tokenz) = parse::tokenize(&mut reader).await? {
+    while let Some((tokenz, count)) = parse::tokenize(&mut reader).await? {
         let command = Command::parse(&tokenz);
         match command {
             Command::Set { key, value, ex } => {
@@ -71,11 +72,12 @@ pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB
                 println!("Replica: wrote {key} {value}")
             }
             Command::Replconf(Replconf::GetAck(_val)) => {
-                let response = array(&vec!["REPLCONF", "ACK", "0"]);
+                let response = array(&vec!["REPLCONF", "ACK", format!("{offset}").as_ref()]);
                 writer.write_all(response.as_bytes()).await?;
             }
             _ => {}
         }
+        offset += count;
     }
 
 
