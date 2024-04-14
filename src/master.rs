@@ -108,6 +108,9 @@ async fn handle_client_command(
             let mut guard = router.lock().unwrap();
             guard.register_replica(*peer);
         }
+        Command::Wait => {
+            stream.write_all(b":0\r\n").await?;
+        }
         Command::Err => {
             stream.write_all(ERR).await?;
         }

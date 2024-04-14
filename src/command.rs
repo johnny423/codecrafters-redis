@@ -18,6 +18,7 @@ pub enum Command {
     Replconf(Replconf),
     Psync,
     Err,
+    Wait,
 }
 
 
@@ -69,6 +70,8 @@ impl Command {
             },
 
             ["psync", _rest @ ..] => Command::Psync,
+
+            ["wait", _rest @ ..] => Command::Wait,
 
             _ => Command::Err,
         }
