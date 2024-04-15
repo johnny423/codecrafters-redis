@@ -1,13 +1,11 @@
-use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use clap::{Arg, Command as ClapCommand};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
 
-use db::{Entry, DB};
+use db::DB;
 
+use crate::master::Replicas;
 use crate::replica::sync_with_master;
 
 mod command;
@@ -60,48 +58,6 @@ impl Server {
     }
 }
 
-type Tx = mpsc::UnboundedSender<String>;
-// type Rx = mpsc::UnboundedReceiver<String>;
-
-struct Router {
-    peers: HashMap<SocketAddr, Tx>,
-    replicas: HashSet<SocketAddr>,
-}
-
-impl Router {
-    fn new() -> Self {
-        Router {
-            peers: HashMap::new(),
-            replicas: HashSet::<SocketAddr>::new(),
-        }
-    }
-
-    fn broadcast_to_replicas(&mut self, message: &str) {
-        for replica in &self.replicas {
-            if let Some(peer) = self.peers.get(replica) {
-                let _ = peer.send(message.into());
-            }
-        }
-    }
-
-    fn register_peer(&mut self, receiver: SocketAddr, tx: Tx) {
-        self.peers.insert(receiver, tx);
-    }
-
-    fn remove_peer(&mut self, receiver: &SocketAddr) {
-        self.peers.remove(receiver);
-        self.replicas.remove(receiver);
-    }
-
-    fn register_replica(&mut self, replica: SocketAddr) {
-        self.replicas.insert(replica);
-    }
-
-    fn count_replicas(&self) -> usize {
-        self.replicas.len()
-    }
-}
-
 #[tokio::main]
 async fn main() {
     let matches = ClapCommand::new("App Command Parser")
@@ -142,14 +98,14 @@ async fn main() {
 }
 
 async fn start_server(server: Server) {
-    let db: DB = Arc::new(Mutex::new(HashMap::<String, Entry>::new()));
+    let db = DB::new();
     let server = Arc::new(server);
-    let router = Arc::new(Mutex::new(Router::new()));
+    let replicas = Replicas::new();
 
     if let Role::Replica { host, port } = &server.role {
         let master_addr = format!("{host}:{port}",);
         let server = server.clone();
-        let db = Arc::clone(&db);
+        let db = db.clone();
         tokio::spawn(async move {
             let stream = TcpStream::connect(master_addr.clone()).await.unwrap();
             if let Err(err) = sync_with_master(stream, server, db).await {
@@ -169,8 +125,8 @@ async fn start_server(server: Server) {
 
         let db = db.clone();
         let server = server.clone();
-        let router = Arc::clone(&router);
+        let replicas = replicas.clone();
 
-        tokio::spawn(master::client_handler(stream, peer, db, server, router));
+        tokio::spawn(master::client_handler(stream, peer, db, server, replicas));
     }
 }

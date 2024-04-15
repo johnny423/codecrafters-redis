@@ -7,7 +7,7 @@ use tokio::net::TcpStream;
 use crate::command::{Command, Replconf};
 use crate::db::DB;
 use crate::parse::array;
-use crate::{db, parse, Server};
+use crate::{parse, Server};
 
 pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB) -> Result<()> {
     let (mut reader, mut writer) = stream.split();
@@ -68,7 +68,7 @@ pub async fn sync_with_master(mut stream: TcpStream, server: Arc<Server>, db: DB
         let command = Command::parse(&tokenz);
         match command {
             Command::Set { key, value, ex } => {
-                db::set(&db, key.to_owned(), value.to_string(), ex.to_owned());
+                db.set(key.to_owned(), value.to_string(), ex.to_owned());
                 println!("Replica: wrote {key} {value}")
             }
             Command::Replconf(Replconf::GetAck(_val)) => {
