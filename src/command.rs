@@ -24,7 +24,7 @@ pub enum Command {
     Replconf(Replconf),
     Psync,
     Err,
-    Wait,
+    Wait(usize, u64),
 }
 
 impl Command {
@@ -71,7 +71,9 @@ impl Command {
 
             ["psync", _rest @ ..] => Command::Psync,
 
-            ["wait", _rest @ ..] => Command::Wait,
+            ["wait", replicas, timeout] => {
+                Command::Wait(replicas.parse().unwrap(), timeout.parse().unwrap())
+            }
 
             _ => Command::Err,
         }
